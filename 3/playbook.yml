@@ -1,0 +1,38 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Upload custom nginx config file
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/default
+      notify:
+        - restart nginx
+
+    - name: Ensure nginx is enabled and running
+      systemd:
+        name: nginx
+        enabled: yes
+        state: started
+
+    - name: Fetch local IP address
+      shell: hostname -I | awk '{print $1}'
+      register: ip_address
+
+    - name: Display IP address
+      debug:
+        msg: "Nginx развернут на {{ ip_address.stdout }}:{{ nginx_port }}"
+
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+  vars:
+    nginx_port: 8080
