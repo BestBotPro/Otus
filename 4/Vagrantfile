@@ -1,0 +1,49 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+    config.vm.box = "vbDebian"
+    config.vm.provider "virtualbox" do |vb|
+      vb.name = "VagrantVM"
+      vb.memory = 1024
+      vb.cpus = 1
+  
+      (1..4).each do |i|
+        diskname = "disk#{i}.vdi"
+        unless File.exist?(diskname)
+          vb.customize ['createhd', '--filename', diskname, '--size', 1024]
+          vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', i, '--device', 0, '--type', 'hdd', '--medium', diskname]
+        end
+      end
+    end
+  
+    config.vm.network "public_network"
+    config.vm.provision "shell", inline: <<-SHELL
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y sudo ufw mdadm
+    apt-get update
+    apt-get install -y sudo ufw mdadm
+    useradd -m -s /bin/bash pt && echo "Пользователь pt успешно создан."
+    echo 'pt:123' | chpasswd && echo "Пароль для pt успешно изменен."
+    usermod -aG sudo pt && echo "Пользователь pt добавлен в группу sudo."
+    ufw allow 22
+    ufw allow 8080
+    ufw --force enable && echo "UFW включен и настроен."
+    SHELL
+
+    # Создание RAID массива
+    config.vm.provision "shell", inline: <<-SHELL
+      yes | mdadm --create --verbose /dev/md0 --level=0 --raid-devices=4 /dev/sdb /dev/sdc /dev/sdd /dev/sde
+      mkfs.ext4 /dev/md0
+      mount /dev/md0 /mnt
+      echo "/dev/md0 /mnt ext4 defaults 0 0" >> /etc/fstab
+      echo "RAID массив создан и смонтирован."
+    SHELL
+
+    # Вывод IP-адреса для SSH подключения
+    config.vm.provision "shell", inline: <<-SHELL
+      IP_ADDR=$(ip a show eth1 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1)
+      echo "Для SSH подключения используйте адрес: $IP_ADDR"
+    SHELL
+end
