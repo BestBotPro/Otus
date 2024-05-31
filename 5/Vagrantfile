@@ -1,0 +1,72 @@
+# -*- mode: ruby -*-
+# vim: set ft=ruby :
+
+home = ENV['HOME']
+ENV["LC_ALL"] = "en_US.UTF-8"
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "centos/7"
+  config.vbguest.installer_options = { allow_kernel_upgrade: true }
+  config.vm.box_version = "0"
+
+  config.vm.define "lvm" do |machine|
+    machine.vm.box = "centos/7"
+    machine.vm.host_name = "lvm"
+
+    machine.vm.provider "virtualbox" do |vb|
+      vb.memory = "1024"
+      vb.cpus = 1
+      vb.customize ['storagectl', :id, '--name', 'SATA Controller', '--add', 'sata', '--controller', 'IntelAhci', '--portcount', 4, '--bootable', 'on']
+
+      {'sata1' => 10240, 'sata2' => 2048, 'sata3' => 1024, 'sata4' => 1024}.each do |disk_name, size|
+        disk_file = "#{home}/VirtualBox VMs/#{disk_name}.vdi"
+        unless File.exist?(disk_file)
+          vb.customize ['createhd', '--filename', disk_file, '--size', size]
+        end
+        vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', disk_name[-1].to_i, '--device', 0, '--type', 'hdd', '--medium', disk_file]
+      end
+    end
+
+    machine.vm.network "public_network"
+
+    machine.vm.provision "shell", inline: <<-SHELL
+      yum install -y lvm2 xfsdump xfsprogs mdadm && echo "Successfully installed packages" || echo "Failed to install packages"
+      
+      echo "Listing all block devices:"
+      lsblk && echo "Successfully listed block devices" || echo "Failed to list block devices"
+
+      # Определение диска с корневой файловой системой
+      root_disk=$(lsblk -no PKNAME,MOUNTPOINT | grep ' /$' | awk '{print "/dev/" $1}')
+      echo "Root filesystem is on: $root_disk"
+
+      echo "Listing detailed disk information:"
+      fdisk -l && echo "Successfully listed detailed disk information" || echo "Failed to list detailed disk information"
+
+      # Создание физических томов на всех дисках, кроме диска с корневой файловой системой
+      for dev in /dev/sda /dev/sdb /dev/sdc /dev/sdd /dev/sde; do
+        if [ "$dev" != "$root_disk" ]; then
+          if [ -b $dev ]; then
+            pvcreate $dev && echo "Successfully created physical volume on $dev" || echo "Failed to create physical volume on $dev"
+          fi
+        else
+          echo "Skipping $dev as it contains the root filesystem."
+        fi
+      done
+      
+      
+        vgcreate vg_root /dev/sdb
+        lvcreate -n lv_root -l +100%FREE /dev/vg_root
+        mkfs.xfs /dev/vg_root/lv_root
+        mount /dev/vg_root/lv_root /mnt
+        
+        vgcreate vg_var /dev/sdc /dev/sdd
+        lvcreate -L 950M -m1 -n lv_var vg_var
+        mkfs.ext4 /dev/vg_var/lv_var
+        
+     
+    SHELL
+
+  end
+
+  config.vm.post_up_message = "Machine lvm is up and running. SSH via: `vagrant ssh lvm`"
+end
