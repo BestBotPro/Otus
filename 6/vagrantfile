@@ -1,0 +1,81 @@
+# -*- mode: ruby -*-
+# vim: set ft=ruby :
+
+home = ENV['HOME']
+ENV["LC_ALL"] = "en_US.UTF-8"
+
+
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "almalinux/9"
+  
+  config.vm.box_version = "0"
+
+  config.vm.define "Alma" do |machine|
+    machine.vm.box = "almalinux/9"
+    machine.vm.host_name = "Alma"
+
+    machine.vm.provider "virtualbox" do |vb|
+      vb.memory = "1024"
+      vb.cpus = 1
+    end
+
+    machine.vm.network "public_network"
+    
+    machine.vm.provision "shell", inline: <<-SHELL
+     
+      yum install -y wget rpmdevtools rpm-build createrepo yum-utils cmake gcc git nano
+      if [ $? -eq 0 ]; then echo "Tool installation completed successfully."; else echo "Error during tool installation."; fi
+      
+      mkdir -p ~/rpm && cd ~/rpm
+      yumdownloader --source nginx
+      if [ $? -eq 0 ]; then echo "NGINX source code downloaded successfully."; else echo "Error downloading NGINX source code."; fi
+      
+      rpm -Uvh nginx*.src.rpm
+      if [ $? -eq 0 ]; then echo "NGINX src rpm installed successfully."; else echo "Error installing NGINX src rpm."; fi
+      
+      yum-builddep -y nginx
+      if [ $? -eq 0 ]; then echo "NGINX dependencies installed successfully."; else echo "Error installing NGINX dependencies."; fi
+      
+      cd ~
+      git clone --recurse-submodules -j8 https://github.com/google/ngx_brotli
+      if [ $? -eq 0 ]; then echo "Cloning ngx_brotli completed successfully."; else echo "Error cloning ngx_brotli."; fi
+      
+      cd ngx_brotli/deps/brotli
+      mkdir out && cd out
+      cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_FLAGS="-Ofast -m64 -march=native -mtune=native -flto -funroll-loops -ffunction-sections -fdata-sections -Wl,--gc-sections" -DCMAKE_CXX_FLAGS="-Ofast -m64 -march=native -mtune=native -flto -funroll-loops -ffunction-sections -fdata-sections -Wl,--gc-sections" -DCMAKE_INSTALL_PREFIX=./installed ..
+      cmake --build . --config Release -j 2 --target brotlienc
+      if [ $? -eq 0 ]; then echo "Brotli build completed successfully."; else echo "Error building brotli."; fi
+      
+      cp /vagrant/nginx.spec ~/rpmbuild/SPECS/nginx.spec
+      if [ $? -eq 0 ]; then echo "nginx.spec copied successfully."; else echo "Error copying nginx.spec."; fi
+      
+      cd ~/rpmbuild/SPECS
+      rpmbuild -ba nginx.spec -D 'debug_package %{nil}'
+      if [ $? -eq 0 ]; then echo "NGINX RPM build completed successfully."; else echo "Error building NGINX RPM."; fi
+      
+      cp ~/rpmbuild/RPMS/noarch/* ~/rpmbuild/RPMS/x86_64/
+      cd ~/rpmbuild/RPMS/x86_64
+      yum localinstall -y *.rpm
+      if [ $? -eq 0 ]; then echo "Nginx install successfully."; else echo "Error Nginx install."; fi
+      
+      systemctl start nginx
+      if [ $? -eq 0 ]; then echo "Nginx started successfully."; else echo "Error starting Nginx."; fi
+      
+      mkdir -p /usr/share/nginx/html/repo
+      cp ~/rpmbuild/RPMS/x86_64/*.rpm /usr/share/nginx/html/repo/
+      createrepo /usr/share/nginx/html/repo/
+      if [ $? -eq 0 ]; then echo "Repository created successfully."; else echo "Error creating repository."; fi
+                  
+      sed -i '/index  index.html index.htm;/a autoindex on;' /etc/nginx/nginx.conf
+      nginx -t && nginx -s reload
+      if [ $? -eq 0 ]; then echo "NGINX reloaded successfully."; else echo "Error reloading NGINX."; fi
+      
+      echo -e "[otus]\nname=otus-linux\nbaseurl=http://localhost/repo\ngpgcheck=0\nenabled=1" >> /etc/yum.repos.d/otus.repo
+      yum repolist enabled | grep otus
+      if [ $? -eq 0 ]; then echo "Repository added successfully."; else echo "Error adding repository."; fi
+    SHELL
+  end
+
+  config.vm.post_up_message = "Alma machine is up and running. To connect, use: `vagrant ssh Alma`"
+end
