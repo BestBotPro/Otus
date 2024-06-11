@@ -1,0 +1,28 @@
+# Vagrantfile
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 1
+  end
+
+  config.vm.provision "file", source: "./watchlog.sh", destination: "/home/vagrant/watchlog.sh"
+  config.vm.provision "file", source: "./watchlog", destination: "/home/vagrant/watchlog"
+  config.vm.provision "file", source: "./nginx-second.conf", destination: "/home/vagrant/nginx-second.conf"
+  config.vm.provision "file", source: "./nginx-first.conf", destination: "/home/vagrant/nginx-first.conf"
+  config.vm.provision "file", source: "./watchlog.service", destination: "/home/vagrant/watchlog.service"
+  config.vm.provision "file", source: "./spawn-fcgi.service", destination: "/home/vagrant/spawn-fcgi.service"
+  config.vm.provision "file", source: "./nginx@.service", destination: "/home/vagrant/nginx@.service"
+  config.vm.provision "file", source: "./watchlog.timer", destination: "/home/vagrant/watchlog.timer"
+  config.vm.provision "file", source: "./fcgi.conf", destination: "/home/vagrant/fcgi.conf"
+  config.vm.provision "file", source: "./setup.sh", destination: "/home/vagrant/setup.sh"
+  config.vm.provision "shell", inline: <<-SHELL
+  sudo bash /home/vagrant/setup.sh
+  
+  systemctl status nginx@first
+  systemctl status nginx@second
+ 
+  systemctl status spawn-fcgi.service
+SHELL
+
+end
