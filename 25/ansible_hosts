@@ -1,0 +1,5 @@
+[server]
+web            ansible_connection=local
+
+[client]
+logw            ansible_connection=local

@@ -1,0 +1,123 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Install required packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+          - ntp
+          - mc
+    - name: Ensure NTP service is enabled and running
+      service:
+        name: ntp
+        state: started
+        enabled: true
+    - name: print /etc/hostname
+      shell: cat /etc/hostname
+      register: hostname_results
+    - debug:
+        var: hostname_results.stdout
+    - name: print date
+      shell: date
+      register: date_results
+    - debug:
+        var: date_results.stdout
+- hosts: web
+  become: true
+  vars:
+    conf_file_nginx: /etc/nginx/nginx.conf
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+  tasks:
+    - name: install nginx
+      apt:
+        update_cache: yes
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - nginx
+    - name: systemctl status nginx
+      shell: |
+        systemctl status nginx
+        ss -ltn | grep 80
+      register: nginx_results_status
+    - debug:
+        var: nginx_results_status.stdout_lines
+    - name: version nginx
+      command: nginx -v
+      ignore_errors: true
+      register: nginx_version_status
+    - debug:
+        var: nginx_version_status.stderr
+    - name: Copy a new "nginx.conf"
+      copy:
+        src: conf/nginx.conf
+        dest: /etc/nginx/nginx.conf
+        owner: root
+        group: root
+        mode: "0644"
+    - name: First check the configuration
+      command: /usr/sbin/nginx -t
+      register: test_nginx_config
+    - debug:
+        var: test_nginx_config.stderr_lines[0]
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+      when: "'syntax is ok' in test_nginx_config.stderr_lines[0]"
+    - name: end play if nginx -t - incorrect
+      debug:
+        msg: Nginx -t - incorrect!!!
+      when: "'syntax is ok' not in test_nginx_config.stderr_lines[0]"
+    - meta: end_play
+- hosts: log
+  become: true
+  handlers:
+    - name: restart rsyslog
+      service:
+        name: rsyslog
+        state: restarted
+  tasks:
+    - name: status install rsyslog
+      shell: sudo apt list rsyslog
+      register: rsyslog_results_status
+    - debug:
+        var: rsyslog_results_status.stdout_lines
+    - name: Set some kernel parameters in /etc/rsyslog.conf
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - regexp: ^#module(load="imudp")
+          line: module(load="imudp")
+        - regexp: ^#input(type="imudp" port="514")
+          line: input(type="imudp" port="514")
+        - regexp: ^#module(load="imtcp")
+          line: module(load="imtcp")
+        - regexp: ^#input(type="imtcp" port="514")
+          line: input(type="imtcp" port="514")
+    - name: add in /etc/rsyslog.conf
+      blockinfile:
+        path: /etc/rsyslog.conf
+        block: |
+          # Add remote logs
+          $template RemoteLogs,"/var/log/rsyslog/$HOSTNAME%/$PROGRAMNAME%.log"
+          *.* ?RemoteLogs
+          & ~
+    - name: systemctl restart rsyslog
+      shell: sudo systemctl restart rsyslog
+    - name: status port
+      shell: ss -ltn | grep 514
+      register: port_results_status
+    - debug:
+        var: port_results_status.stdout_lines
