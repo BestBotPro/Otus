@@ -19,6 +19,7 @@
 
 Устанавливаем необходимые пакеты
 
+
 tasks:
     - name: install packages
       apt:
@@ -33,14 +34,17 @@ tasks:
 
 На backup создаем пользователя
 
+
     - name: Create a user 'borg'
       shell: useradd -m -s /bin/bash -p $(openssl passwd -6 1234) borg
       ignore_errors: yes
 
 Настраиваем SSH
+
 ![2](img/2.jpg)
 
 Генерация SSH ключей и копирование их на сервер
+
     - name: Generate ssh-key-gen
       command: ssh-keygen -q -t rsa  -f /root/.ssh/id_rsa  -N ''
     - name: ssh-copy-id to server
@@ -48,7 +52,8 @@ tasks:
         sshpass -p 1234 ssh-copy-id -i /root/.ssh/id_rsa.pub -o
         StrictHostKeyChecking=no borg@192.168.56.12
 
-Инициализация репозитория BorgBackup и создание резервной копии     
+Инициализация репозитория BorgBackup и создание резервной копии 
+
     - name: borg init
       shell: borg init -e none borg@192.168.56.12:/var/backup/
     - name: borg create
@@ -56,6 +61,7 @@ tasks:
         borg@192.168.56.12:/var/backup/::"etc-{now:%Y-%m-%d_%H:%M:%S}" /etc
 
 Настройка таймера и сервиса systemd
+
     - name: borg-backup.timer template
       template:
         src: timer.j2
@@ -68,4 +74,5 @@ tasks:
         mode: "0644"
 
 Все работает
+
 ![3](img/3.jpg)
