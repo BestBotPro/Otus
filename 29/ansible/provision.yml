@@ -1,0 +1,108 @@
+- hosts: all
+  become: true
+  tasks:
+
+    # Отключает UFW
+    - name: Disable UFW
+      systemd:
+        name: ufw
+        state: stopped
+        enabled: no
+
+    # Устанавливает dnsmasq
+    - name: Install dnsmasq
+      apt:
+        name: dnsmasq
+        update_cache: yes
+        state: present
+
+    # Копирует конфиг dnsmasq
+    - name: Copy dnsmasq config
+      copy:
+        src: /vagrant/ansible/pxe.conf
+        dest: /etc/dnsmasq.d/pxe.conf
+        owner: root
+        group: root
+        mode: 0644
+        remote_src: true    
+
+    # Устанавливает Apache
+    - name: Install Apache
+      apt:
+        name: apache2
+        state: present
+
+    # Копирует конфиг Apache
+    - name: Copy Apache config
+      copy:
+        src: /vagrant/ansible/ks-server.conf
+        dest: /etc/apache2/sites-available/ks-server.conf
+        owner: root
+        group: root
+        mode: 0644
+        remote_src: true 
+  
+    # Активирует сайт в Apache
+    - name: Enable Apache site
+      shell: a2ensite ks-server.conf
+
+    # Создает директории
+    - name: Create directories
+      file:
+        path: "{{ item.pth }}"
+        state: directory
+        mode: 0755
+      with_items:
+        - { pth: "/srv/images" }
+        - { pth: "/srv/ks" }
+        - { pth: "/srv/tftp" }
+
+    # Скачивает образ Ubuntu
+    - name: Download Ubuntu image
+      get_url:
+        url: https://releases.ubuntu.com/noble/ubuntu-24.04.1-live-server-amd64.iso 
+        dest: /srv/images/ubuntu-24.04.1-live-server-amd64.iso 
+        force: yes 
+
+    # Скачивает и распаковывает netboot
+    - name: Unpack netboot files
+      unarchive:
+        src: https://releases.ubuntu.com/noble/ubuntu-24.04.1-netboot-amd64.tar.gz
+        dest: /srv/tftp
+        remote_src: yes
+
+    # Копирует конфиги PXE
+    - name: Copy PXE configs
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dst }}"
+        owner: root
+        group: root
+        mode: 0644
+        remote_src: true
+      with_items:
+        - { src: "/vagrant/ansible/user-data", dst: "/srv/ks/user-data" }
+        - { src: "/vagrant/ansible/default", dst: "/srv/tftp/amd64/pxelinux.cfg/default" }
+    
+    # Создает meta-data файл
+    - name: Ensure meta-data exists
+      file:
+        path: /srv/ks/meta-data
+        state: touch
+        owner: root
+        group: root
+        mode: 0644
+    
+    # Перезапускает dnsmasq
+    - name: Restart dnsmasq
+      systemd:
+        name: dnsmasq
+        state: restarted
+        enabled: true
+
+    # Перезапускает Apache
+    - name: Restart Apache
+      systemd:
+        name: apache2
+        state: restarted
+        enabled: true
