@@ -3,21 +3,26 @@ network:
   version: 2
   renderer: networkd
   ethernets:
-    eth1:
+    enp0s8:
       addresses:
       - 192.168.255.6/30
+      optional: false
       routes:
-      - to: 0.0.0.0/0
-        via: 192.168.255.5
-    eth2:
+        - to: default
+          via: 192.168.255.5
+    enp0s9:
       addresses:
       - 192.168.1.1/25
-    eth3:
+      optional: false
+    enp0s10:
       addresses:
       - 192.168.1.129/26
-    eth4:
+      optional: false
+    enp0s16:
       addresses:
       - 192.168.1.193/26
-    eth5:
+      optional: false
+    enp0s19:
       addresses:
       - 192.168.56.30/24
+      optional: false

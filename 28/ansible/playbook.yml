@@ -1,6 +1,7 @@
 ---
 - hosts: all
   become: true
+  gather_facts: yes
   tasks:
   # Установка утилиты traceroute для диагностики маршрутов сетевых пакетов.
   - name: install traceroute
@@ -26,8 +27,8 @@
       group: root
       mode: "{{ item.mode }}"
     with_items:
-      - { src: "templates/ip_rules.ipv4", dest: "/etc/iptables_rules.ipv4", mode: "0644" }
-      - { src: "templates/ip_rest", dest: "/etc/network/if-pre-up.d/iptables", mode: "0755" }
+      - { src: "templates/iptables_rules.ipv4", dest: "/etc/iptables_rules.ipv4", mode: "0644" }
+      - { src: "templates/iptables_restore", dest: "/etc/network/if-pre-up.d/iptables", mode: "0755" }
     when: (ansible_hostname == "inetRouter")
 
   # Включение пересылки IP пакетов на устройствах, находящихся в группе routers.
@@ -57,9 +58,13 @@
       group: root
       mode: 0644
 
+  # Удаление файла cloud-init конфигурации Netplan.
+  - name: remove cloud-init netplan configuration
+    file:
+      path: /etc/netplan/50-cloud-init.yaml
+      state: absent
+
   # Перезагрузка всех хостов с тайм-аутом в 10 минут.
   - name: restart all hosts
     reboot:
       reboot_timeout: 600
-
-
