@@ -1,0 +1,65 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  # Установка утилиты traceroute для диагностики маршрутов сетевых пакетов.
+  - name: install traceroute
+    apt:
+      name: traceroute
+      state: present
+      update_cache: true
+
+  # Остановка и отключение файервола UFW на хосте inetRouter.
+  - name: disable UFW
+    systemd:
+      name: ufw
+      state: stopped
+      enabled: no
+    when: (ansible_hostname == "inetRouter") 
+
+  # Настройка NAT на inetRouter с использованием предоставленных шаблонов.
+  - name: set up NAT on inetRouter
+    template: 
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: root
+      group: root
+      mode: "{{ item.mode }}"
+    with_items:
+      - { src: "templates/ip_rules.ipv4", dest: "/etc/iptables_rules.ipv4", mode: "0644" }
+      - { src: "templates/ip_rest", dest: "/etc/network/if-pre-up.d/iptables", mode: "0755" }
+    when: (ansible_hostname == "inetRouter")
+
+  # Включение пересылки IP пакетов на устройствах, находящихся в группе routers.
+  - name: set up IP forwarding on routers
+    sysctl:
+      name: net.ipv4.conf.all.forwarding
+      value: '1'
+      state: present
+    when: "'routers' in group_names"
+
+  # Отключение стандартного маршрута на всех хостах, кроме inetRouter.
+  - name: disable default route
+    template: 
+      src: "templates/00-installer-config.yaml"
+      dest: "/etc/netplan/00-installer-config.yaml"
+      owner: root
+      group: root
+      mode: 0644
+    when: (ansible_hostname != "inetRouter") 
+
+  # Добавление шлюза по умолчанию для centralRouter.
+  - name: add default gateway for centralRouter
+    template: 
+      src: "templates/50-vagrant_{{ansible_hostname}}.yaml"
+      dest: "/etc/netplan/50-vagrant.yaml"
+      owner: root
+      group: root
+      mode: 0644
+
+  # Перезагрузка всех хостов с тайм-аутом в 10 минут.
+  - name: restart all hosts
+    reboot:
+      reboot_timeout: 600
+
+
