@@ -45,6 +45,10 @@ vagrant up
 
 ![2](img/2.jpg) 
 
-Настраиваем NAT и проверяем
+Playbook выполняется и все настраивает
 
-![3](img/3.jpg)
+![4](img/4.jpg)
+
+Проверка доступа до ya.ru c хоста office1Server:
+
+![5](img/5.jpg)
