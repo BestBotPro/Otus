@@ -1,0 +1,125 @@
+---
+- name: Base setup
+  hosts: all
+  become: true
+  tasks:
+    # Установка редактора nano
+    - name: Install nano
+      yum:
+        name: nano
+        state: present
+        update_cache: yes
+
+    # Отключение SELinux
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+
+    # Принудительное отключение SELinux
+    - name: Enforce SELinux
+      shell: setenforce 0
+      ignore_errors: true
+
+    # Настройка часового пояса
+    - name: Set timezone
+      timezone:
+        name: "Europe/Moscow"
+
+    # Обновление файла hosts
+    - name: Update hosts
+      template:
+        src: hosts.j2
+        dest: /etc/hosts
+        owner: root
+        group: root
+        mode: 0644      
+
+    # Запуск сервиса firewalld
+    - name: Start firewalld
+      systemd:
+        name: firewalld
+        state: started
+        enabled: true
+        
+    # Настройка брандмауэра
+    - name: Configure firewall
+      firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+        immediate: true
+      loop:
+        - ntp
+        - http
+        - https
+        - ldap
+        - ldaps
+        - kerberos
+        - kpasswd
+        - dns
+
+- name: Configure IPA server
+  hosts: ipa.otus.lan
+  become: true
+  vars_files:
+    - defaults/main.yml
+  tasks:
+    # Установка FreeIPA
+    - name: Install FreeIPA
+      yum:
+        name: ipa-server
+        state: present
+  
+    # Генерация ключей
+    - name: Generate keys
+      openssh_keypair:
+        path: /home/vagrant/.ssh/id_rsa
+        owner: vagrant
+        group: vagrant
+    
+    # Получение публичного ключа
+    - name: Get public key
+      shell: cat /home/vagrant/.ssh/id_rsa.pub
+      register: public_key
+      changed_when: false
+
+    # Установка IPA
+    - name: IPA setup
+      shell: |
+        ipa-server-install -U --hostname="{{ ipa_server }}" --domain="{{ domain }}" --realm="{{ realm }}" \
+          --ds-password="{{ admin_pass }}" --admin-password="{{ admin_pass }}" --unattended
+      args:
+        creates: /etc/ipa/default.conf
+
+    # Добавление пользователя
+    - name: Add user
+      ipa_user:
+        ipa_host: "{{ ipa_server }}"
+        ipa_user: "{{ admin_acc }}"
+        ipa_pass: "{{ admin_pass }}"
+        name: "{{ user_acc }}"
+        givenname: "{{ first }}"
+        sn: "{{ last }}"
+        loginshell: "/bin/bash"
+        sshpubkey:
+          - "{{ public_key.stdout }}"
+
+- name: Configure clients
+  hosts: client1.otus.lan, client2.otus.lan
+  become: true
+  vars_files:
+    - defaults/main.yml
+  tasks:
+    # Установка клиента FreeIPA
+    - name: Install FreeIPA client
+      yum:
+        name: ipa-client
+        state: present
+    
+    # Присоединение клиентов к IPA
+    - name: Add clients to IPA
+      shell: |
+        ipa-client-install --mkhomedir --domain="{{ realm }}" --server="{{ ipa_server }}" \
+          --no-ntp -p "{{ admin_acc }}" -w "{{ admin_pass }}" --unattended
+      args:
+        creates: /etc/ipa/default.conf 

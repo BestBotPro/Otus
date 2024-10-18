@@ -1,0 +1,11 @@
+ipa_server: ipa.otus.lan
+domain: otus.lan
+realm: OTUS.LAN
+admin_acc: admin
+admin_pass: adminadmin
+user_acc: otus
+user_pass: 1234
+user_shell: /bin/bash
+first: Otus
+last: Otus
+netbios: OTUS
